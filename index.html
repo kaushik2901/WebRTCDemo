@@ -152,7 +152,8 @@
       // domain
       class Communicator {
         constructor() {
-          this.rtc = new RTCPeerConnection();
+          const servers = { iceServers: [ { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'], }, ], iceCandidatePoolSize: 10,};
+          this.rtc = new RTCPeerConnection(servers);
         }
 
         onIceCandidate(callback) {
