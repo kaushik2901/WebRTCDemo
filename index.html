@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebRTC Demo</title>
+  <style>
+    .btn:focus {
+      outline: none;
+      box-shadow: none;
+    }
+
+    .input:focus {
+      outline: none !important;
+    }
+
+    #chat-box {
+      height: 90vh;
+    }
+
+    #wrapper {
+      display: flex;
+      flex-direction: column;
+      flex-flow: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    #textarea {
+      flex: 1;
+      padding: 10px 0px;
+    }
+
+    #messages {
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+  </style>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x" crossorigin="anonymous" />
+</head>
+
+<body>
+  <div id="initiating-modal" class="modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Start New Conversation</h5>
+        </div>
+        <div class="modal-body">
+          <div class="call">
+            <fieldset disabled>
+              <div class="mb-3">
+                <label for="initiating-modal-offer" id="initiating-modal-offer-label" class="form-label">Loading
+                  Offer...</label>
+                <textarea type="text" id="initiating-modal-offer" class="form-control" placeholder="Initiating Offer"
+                  rows="4"></textarea>
+              </div>
+            </fieldset>
+            <button id="initiating-copy-offer-btn" class="btn btn-primary">
+              Copy
+            </button>
+            <br /><br />
+            <fieldset>
+              <div class="mb-3">
+                <label for="initiating-modal-answer" class="form-label">Receiver's Answer</label>
+                <textarea type="text" id="initiating-modal-answer" class="form-control" placeholder="Receiver's Answer"
+                  rows="4"></textarea>
+              </div>
+            </fieldset>
+            <button id="initiating-receive-answer" class="btn btn-primary">
+              Start Conversation
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="receiving-modal" class="modal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Answer Incoming Request</h5>
+        </div>
+        <div class="modal-body">
+          <div class="accept">
+            <fieldset>
+              <div class="mb-3">
+                <label for="receiving-modal-offer" class="form-label">Enter Offer Here</label>
+                <textarea type="text" id="receiving-modal-offer" class="form-control" placeholder="Initiator's Offer"
+                  rows="4"></textarea>
+              </div>
+            </fieldset>
+            <button id="receiving-generate-answer-btn" class="btn btn-primary">
+              Generate Answer
+            </button>
+            <br /><br />
+            <div id="receiving-generated-answer-div" style="display: none">
+              <fieldset disabled>
+                <div class="mb-3">
+                  <label for="receiving-modal-answer" id="receiving-modal-answer-label" class="form-label">Loading
+                    Answer...</label>
+                  <textarea type="text" id="receiving-modal-answer" class="form-control" placeholder="receiving answer"
+                    rows="4"></textarea>
+                </div>
+              </fieldset>
+              <button id="receiving-copy-answer-btn" class="btn btn-primary">
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="navbar navbar-light bg-light">
+    <div class="container">
+      <a class="navbar-brand">WebRTC Demo</a>
+      <div id="action-btn-div" class="d-flex">
+        <button id="initiate-btn" class="btn btn-success">Initiate</button>
+        &nbsp;
+        <button id="receive-btn" class="btn btn-primary">Receive</button>
+      </div>
+    </div>
+  </nav>
+  <br /><br />
+  <div id="chat-box" style="display: none;" class="container">
+    <div id="wrapper">
+      <div id="textarea">
+        <div id="messages"></div>
+      </div>
+      <div id="message-box">
+        <form id="chat-form" autocomplete="off">
+          <div class="input-group mb-3">
+            <input autocomplete="off" type="text" class="form-control" placeholder="Message" aria-label="Message"
+              id="chat-text-box" aria-describedby="chat-text-box" />
+            <div class="input-group-append">
+              <button class="btn btn-outline-secondary" type="submit" id="chat-button">
+                Send
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+      // domain
+      class Communicator {
+        constructor() {
+          this.rtc = new RTCPeerConnection();
+        }
+
+        onIceCandidate(callback) {
+          this.rtc.onicecandidate = () => callback(this.rtc.localDescription);
+        }
+
+        initializeInitiator({
+          channelName,
+          onMessage,
+          onConnectionOpen,
+          onNewOffer,
+        }) {
+          this.isInitiator = true;
+          this.onIceCandidate(onNewOffer);
+
+          this.dataChannel = this.rtc.createDataChannel(channelName);
+          this.dataChannel.onmessage = onMessage;
+          this.dataChannel.onopen = onConnectionOpen;
+
+          this.rtc
+            .createOffer()
+            .then((offer) => this.rtc.setLocalDescription(offer))
+            .then((res) => console.log("offer set successfully!"));
+        }
+
+        setAnswer(answer) {
+          if (this.isInitiator) {
+            return this.rtc.setRemoteDescription(answer);
+          }
+        }
+
+        sendMessage(message) {
+          if (this.isInitiator) {
+            console.log(this.dataChannel);
+            this.dataChannel.send(message);
+          } else {
+            console.log(this.rtc.dc);
+            this.rtc.dc.send(message);
+          }
+        }
+
+        initializeReceiver({
+          answer,
+          onMessage,
+          onConnectionOpen,
+          onNewAnswer,
+        }) {
+          this.isInitiator = false;
+          this.onIceCandidate(onNewAnswer);
+
+          this.rtc.ondatachannel = (e) => {
+            this.rtc.dc = e.channel;
+            this.rtc.dc.onmessage = onMessage;
+            this.rtc.dc.onopen = onConnectionOpen;
+          };
+
+          this.rtc
+            .setRemoteDescription(answer)
+            .then((e) => console.log("answer set successfully!"));
+
+          this.rtc
+            .createAnswer()
+            .then((e) => this.rtc.setLocalDescription(e))
+            .then((e) => console.log("Answer created!"));
+        }
+      }
+
+      // main
+      window.onload = () => {
+        const format = (arguments) => {
+          return Array.prototype.slice.call(arguments).join(" ");
+        }
+
+        const getMessageDiv = (message, isRight = false) => {
+          const newElement = document.createElement("div");
+
+          if (isRight) {
+            newElement.style.textAlign = "right";
+          }
+
+          newElement.textContent = message;
+          return newElement;
+        }
+
+        const addMessage = (message, isRight = false) => {
+          const messageBox = document.getElementById("messages");
+
+          const isScrolledToBottom =
+            messageBox.scrollHeight - messageBox.clientHeight <=
+            messageBox.scrollTop + 1;
+
+          messageBox.appendChild(getMessageDiv(message, isRight));
+
+          if (isScrolledToBottom) {
+            messageBox.scrollTop = messageBox.scrollHeight - messageBox.clientHeight;
+          }
+        }
+
+        const copyText = (text) => {
+          navigator.clipboard.writeText(text);
+        }
+
+        const communicator = new Communicator();
+
+        const onMessage = (e) => {
+          console.log("Message", e);
+          addMessage(e.data, false);
+        }
+
+        const onConnectionOpen = () => {
+          document.getElementById("chat-box").style.display = "block";
+
+          const chatForm = document.getElementById("chat-form");
+          chatForm.addEventListener("submit", e => {
+            e.preventDefault();
+
+            const message = document.getElementById("chat-text-box");
+            message.value = message.value.trim();
+
+            console.log(message.value);
+            communicator.sendMessage(message.value);
+            addMessage(message.value, true);
+
+            message.value = "";
+          });
+        }
+
+        const initiatingModalDOM = document.getElementById("initiating-modal");
+        const initiatingModalBootstrap = new bootstrap.Modal(
+          initiatingModalDOM
+        );
+
+        const initiateBtn = document.getElementById("initiate-btn");
+        initiateBtn.addEventListener("click", (e) => {
+          initiatingModalBootstrap.show();
+          communicator.initializeInitiator({
+            channelName: "channel",
+            onNewOffer: (offer) => {
+              document.getElementById("initiating-modal-offer").value =
+                JSON.stringify(offer);
+              document.getElementById(
+                "initiating-modal-offer-label"
+              ).innerHTML = "Generated Offer";
+            },
+            onConnectionOpen: () => {
+              console.log("Connection Opened!");
+              initiatingModalBootstrap.hide();
+              onConnectionOpen();
+            },
+            onMessage: onMessage,
+          });
+
+          const offerCopyBtn = document.getElementById("initiating-copy-offer-btn")
+          offerCopyBtn.addEventListener("click", () => {
+            copyText(document.getElementById("initiating-modal-offer").value)
+          })
+
+          const receiveAnswerBtn = document.getElementById(
+            "initiating-receive-answer"
+          );
+          receiveAnswerBtn.addEventListener("click", () => {
+            const answer = JSON.parse(
+              document.getElementById("initiating-modal-answer").value
+            );
+            communicator.setAnswer(answer);
+          });
+        });
+
+        const receivingModalDOM = document.getElementById("receiving-modal");
+        const receivingModalBootstrap = new bootstrap.Modal(receivingModalDOM);
+
+        const receiveBtn = document.getElementById("receive-btn");
+        receiveBtn.addEventListener("click", (e) => {
+          receivingModalBootstrap.show();
+
+          const generateAnswerBtn = document.getElementById(
+            "receiving-generate-answer-btn"
+          );
+          generateAnswerBtn.addEventListener("click", () => {
+            document.getElementById(
+              "receiving-generated-answer-div"
+            ).style.display = "block";
+
+            const answer = JSON.parse(
+              document.getElementById("receiving-modal-offer").value
+            );
+
+            const answerCopyBtn = document.getElementById("receiving-copy-answer-btn")
+            answerCopyBtn.addEventListener("click", () => {
+              copyText(document.getElementById("receiving-modal-answer").value)
+            })
+
+            communicator.initializeReceiver({
+              answer: answer,
+              onNewAnswer: (newAnswer) => {
+                document.getElementById("receiving-modal-answer").value = JSON.stringify(newAnswer);
+                document.getElementById("receiving-modal-answer-label").innerHTML = "Answer Generated";
+              },
+              onConnectionOpen: () => {
+                console.log("Connection Opened!");
+                receivingModalBootstrap.hide();
+                onConnectionOpen();
+              },
+              onMessage: onMessage,
+            });
+          });
+        });
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-gtEjrD/SeCtmISkJkNUaaKMoLD0//ElJ19smozuHV6z3Iehds+3Ulb9Bn9Plx0x4"
+      crossorigin="anonymous"></script>
+</body>
+
+</html>
